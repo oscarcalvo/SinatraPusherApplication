@@ -3,7 +3,7 @@ require 'pusher'
 require 'sinatra/json'
 
 get "/" do
-erb :nuevo
+erb :index
 end
 
 post "/pusherAuthentication" do
