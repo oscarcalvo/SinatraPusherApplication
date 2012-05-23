@@ -1,5 +1,4 @@
-	var channelName="private-blogChannel";
-	var eventName="client-newCommentEvent";
+	var channelName="private-blogChannel";	
 	Pusher.channel_auth_endpoint = '/pusherAuthentication';	
 	var pusherKey="4df2e537c7b561b87dd7";
 
@@ -14,14 +13,15 @@ Math.guid = function(){
 
 $(function(){
 
-window.clientID=Math.guid();
+
 _.templateSettings = {
 	  interpolate : /\{\{(.+?)\}\}/g
 	};	
 	var Comment=Backbone.Model.extend({
 		defaults:{
-			state: "editing",			
-			clientID:clientID
+			state: "editing",
+			name: "",
+			comment: ""
 		},
 		initialize: function() {
 			if(!this.get("id"))
@@ -30,7 +30,7 @@ _.templateSettings = {
 	});
 	var ConfigurationModel=Backbone.Model.extend({
 		defaults: {
-			byKey: true,
+			byKey: true
 		}
 	});
 	window.configurationModel=new ConfigurationModel();
@@ -39,43 +39,56 @@ _.templateSettings = {
 		model: Comment,
 		getCommentsByStateAndClientId: function(state,clientId){
 			return this.select(function(cSelect){
-				return cSelect.get("state")==state && cSelect.get("clientId")==clientId;
+				return cSelect.get("state")==state && cSelect.get("pusherSyncClientID")==clientId;
 			});	
 		},		
 		getCommentsByState: function(state){
 			return this.select(function(cSelect){
 				return cSelect.get("state")==state;
 			});	
-		},		
+		}		
 	});
 	window.commentsList=new Comments();
 	
 	var newCommentView=Backbone.View.extend({
 		el: $('#comments'),		
 		template: _.template($('#tNewComment').html()),
-		updateComment:function(nModel,commentText){			
-			
-			$("#sComment",this.addedElement).text(commentText);
-			
+		updateComment:function(nModel){
+			$("#sComment",this.addedElement).text(nModel.get("comment"));
+			$("#sName",this.addedElement).text(nModel.get("name"));
+			this.showHideComment();
+		},
+		deleteComment:function(nModel){			
+			if(nModel==this.model)					
+				this.addedElement.remove();			
 		},
 		initialize: function(){
-			_.bindAll(this,"updateComment");
-			this.model.bind("change:comment",this.updateComment);
+			_.bindAll(this,"updateComment", "deleteComment");			
+			this.model.bind("change",this.updateComment);
+			this.model.collection.bind("remove",this.deleteComment);
 		},
 		render: function(){
 			this.addedElement=$(this.template(this.model.toJSON()));
+			this.showHideComment();				
 			this.el.append(this.addedElement);				
-		}		
+		},
+		showHideComment:function(){
+			if(this.model.get("comment")=="" && this.model.get("name")=="")
+				this.addedElement.hide();
+			else
+				this.addedElement.show();
+		}
 	});	
 	var CommentsView=Backbone.View.extend({
 		el: $('#mainPanel'),	
 			initialize: function(){			
 				_.bindAll(this,"sendComment,updateByKey");
 				var context=this;				
-				commentsList.bind("add",function(comment){							
-							if(comment.get("state")=="finished" || comment.get("clientID")!=window.clientID)
+				commentsList.bind("add",function(comment){
+						console.log("add "+comment.get("pusherSyncClientID")+ " y el client" +Backbone.Collection.pusherSyncClientID);
+							if(comment.get("state")=="finished" || comment.get("pusherSyncClientID")!=Backbone.Collection.pusherSyncClientID)
 									context.showNewComment(comment);	
-							if(comment.get("state")=="editing" && comment.get("clientID")==window.clientID){
+							if(comment.get("state")=="editing" && comment.get("pusherSyncClientID")==Backbone.Collection.pusherSyncClientID){
 								comment.bind("change:state",function(model,state){
 									if(state=="finished")
 										context.showNewComment(model);	
@@ -89,7 +102,8 @@ _.templateSettings = {
 				comment: $('#tComment').val()				
 				});	
 			},
-			showNewComment:function(comment){				
+			showNewComment:function(comment){	
+				console.log("hay un nuevo comentario");
 				var view=new newCommentView({model: comment});
 				view.render();			
 			},
@@ -102,10 +116,11 @@ _.templateSettings = {
 		},
 		events: {
 			"click #bSend": "sendComment",
-			"keyup #tComment" : "updateByKey"
+			"keyup #tComment" : "updateByKey",
+			"keyup #iName" : "updateByKey"
 		},		
 		getCurrentComment:function(){			
-			return commentsList.getCommentsByStateAndClientId("editing",window.clientId)[0];
+			return commentsList.getCommentsByStateAndClientId("editing",Backbone.Collection.pusherSyncClientID)[0];
 		},		
 		sendComment: function(event){		
 			event.preventDefault();	
@@ -138,7 +153,7 @@ _.templateSettings = {
 		},
 		setChangeByKey:function(){
 			this.model.set({"byKey":$('#chByKey').is(":checked")});			
-		},
+		}
 	});
 	window.commentsView=new CommentsView();		
 	window.configurationView=new ConfigurationView();
@@ -155,40 +170,13 @@ _.templateSettings = {
 	var configurationController=new ConfigurationController();
 	Backbone.history.start();
 	
-	var pusher=new Pusher(pusherKey);
-	window.channel=pusher.subscribe(channelName);
-	channel.bind('pusher:subscription_succeeded', function() {
-			//console.log("suscrito con exito");		
-	});	
-	channel.bind('pusher:subscription_error', function(status) {
-	console.log("error en la suscripcion:"+status);
+	commentsList.syncByPusher({
+	channel_auth_endpoint: "/pusherAuthentication",
+	pusherKey: "4df2e537c7b561b87dd7",
+	channelName: "myCollectionSync",
+	prevSync:true
 });
-	channel.bind(eventName,function(data){					
-			console.log("recibido evento");
-			console.log(JSON.stringify(data));
-			var comment=commentsList.get(data.id);			
-			if(!comment){	
-				var newComment=new Comment(data);			
-				commentsList.add(newComment);
-			}
-			else				
-				comment.set(data);
-				
-	});	
-	commentsList.bind("add",function(comment){								
-							if(comment.get("clientID")==clientID){								
-								comment.bind("change:state",function(model,state){											
-											if(state=='finished'){														
-													channel.trigger(eventName,model);			
-									}
-								});
-								comment.bind("change:comment",function(model,commentText){
-											if(configurationModel.get("byKey")){															
-													channel.trigger(eventName,model);		
-											}
-								
-								});
-							}
-				});
+	
+	
 	commentsList.add(new Comment());
 });
