@@ -1,9 +1,3 @@
-	var channelName="private-blogChannel";	
-	Pusher.channel_auth_endpoint = '/pusherAuthentication';	
-	var pusherKey="4df2e537c7b561b87dd7";
-
-
-
 Math.guid = function(){
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
@@ -13,7 +7,9 @@ Math.guid = function(){
 
 $(function(){
 
-
+	if(window.cancelChat)
+		return;
+	
 _.templateSettings = {
 	  interpolate : /\{\{(.+?)\}\}/g
 	};	
@@ -85,7 +81,7 @@ _.templateSettings = {
 				_.bindAll(this,"sendComment,updateByKey");
 				var context=this;				
 				commentsList.bind("add",function(comment){
-						console.log("add "+comment.get("pusherSyncClientID")+ " y el client" +Backbone.Collection.pusherSyncClientID);
+						
 							if(comment.get("state")=="finished" || comment.get("pusherSyncClientID")!=Backbone.Collection.pusherSyncClientID)
 									context.showNewComment(comment);	
 							if(comment.get("state")=="editing" && comment.get("pusherSyncClientID")==Backbone.Collection.pusherSyncClientID){
@@ -102,8 +98,7 @@ _.templateSettings = {
 				comment: $('#tComment').val()				
 				});	
 			},
-			showNewComment:function(comment){	
-				console.log("hay un nuevo comentario");
+			showNewComment:function(comment){					
 				var view=new newCommentView({model: comment});
 				view.render();			
 			},
